@@ -217,6 +217,29 @@
   }
 
   const fmt = (s) => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(Math.floor(s%60)).padStart(2,"0")}`;
+  const splitWords = (text) => text.trim().split(/\s+/).filter(Boolean);
+  const mergeFinalText = (existingText, incomingText) => {
+    const existing = existingText.trim();
+    const incoming = incomingText.trim();
+    if (!incoming) return existingText;
+    if (!existing) return incoming;
+
+    const a = splitWords(existing);
+    const b = splitWords(incoming);
+    const maxOverlap = Math.min(a.length, b.length);
+    let overlap = 0;
+    for (let size = maxOverlap; size > 0; size--) {
+      const aTail = a.slice(a.length - size).join(" ");
+      const bHead = b.slice(0, size).join(" ");
+      if (aTail === bHead) {
+        overlap = size;
+        break;
+      }
+    }
+
+    const mergedWords = a.concat(b.slice(overlap));
+    return mergedWords.join(" ");
+  };
 
   const render = () => {
     const full = state.finalText + (state.interimText ? " " + state.interimText : "");
@@ -251,7 +274,7 @@
         if (r.isFinal) final += r[0].transcript;
         else interim += r[0].transcript;
       }
-      if (final) state.finalText = (state.finalText ? state.finalText + " " : "") + final.trim();
+      if (final) state.finalText = mergeFinalText(state.finalText, final);
       state.interimText = interim;
       render();
     };
