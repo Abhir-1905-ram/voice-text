@@ -125,10 +125,90 @@
   .mic-btn.recording svg { width: 28px; height: 28px; color: var(--record); fill: var(--record); }
 
   @media (max-width: 640px) {
-    .canvas { padding: 28px; border-radius: 28px; }
-    .canvas article { font-size: 20px; }
-    .stats { gap: 14px; }
-    .mic-btn { width: 80px; height: 80px; }
+    .wrap {
+      padding: 18px 14px calc(18px + env(safe-area-inset-bottom));
+    }
+    header {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .lang-pill {
+      width: fit-content;
+      max-width: 100%;
+      padding: 8px 14px;
+    }
+    .stats {
+      width: 100%;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 13px;
+    }
+    .stat {
+      align-items: flex-start;
+      flex: 1;
+      min-width: 0;
+    }
+    .divider {
+      height: 28px;
+    }
+    main {
+      margin-bottom: 14px;
+    }
+    .canvas {
+      padding: 22px 18px;
+      border-radius: 24px;
+      min-height: 52vh;
+    }
+    .canvas article {
+      font-size: 18px;
+      line-height: 1.7;
+    }
+    .caret {
+      height: 20px;
+    }
+    footer {
+      position: sticky;
+      bottom: 0;
+      z-index: 20;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
+      border-radius: 22px;
+      border: 1px solid var(--glass-border);
+      background: rgba(255,255,255,.74);
+      backdrop-filter: blur(16px);
+    }
+    #clear {
+      justify-self: start;
+    }
+    .mic-wrap {
+      justify-self: center;
+    }
+    .right-controls {
+      justify-self: end;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .ghost,
+    .primary {
+      padding: 8px 12px;
+      font-size: 13px;
+    }
+    .mic-btn {
+      width: 74px;
+      height: 74px;
+    }
+    .ring-1 {
+      inset: -16px;
+    }
+    .ring-2 {
+      inset: -30px;
+    }
   }
 </style>
 </head>
@@ -209,7 +289,7 @@
     copy: $("copy"), copyLabel: $("copyLabel"), download: $("download"),
   };
 
-  const state = { rec: null, recording: false, finalText: "", interimText: "", duration: 0, startedAt: null, tick: null };
+  const state = { rec: null, recording: false, shouldKeepAlive: false, finalText: "", interimText: "", duration: 0, startedAt: null, tick: null };
 
   if (!SR) {
     els.unsupported.hidden = false;
@@ -262,7 +342,7 @@
 
   const start = () => {
     els.error.hidden = true;
-    if (!SR) return;
+    if (!SR || state.recording) return;
     const rec = new SR();
     rec.continuous = true;
     rec.interimResults = true;
@@ -280,8 +360,10 @@
     };
     rec.onerror = (ev) => { els.error.textContent = ev.error || "Recognition error"; els.error.hidden = false; };
     rec.onend = () => {
-      if (state.rec === rec && state.recording) { try { rec.start(); } catch {} }
+      // Auto-resume only while the user still wants recording active.
+      if (state.rec === rec && state.shouldKeepAlive) { try { rec.start(); } catch {} }
     };
+    state.shouldKeepAlive = true;
     state.rec = rec;
     try { rec.start(); } catch (e) { els.error.textContent = String(e); els.error.hidden = false; return; }
     state.startedAt = Date.now() - state.duration * 1000;
@@ -294,9 +376,12 @@
   };
 
   const stop = () => {
+    const rec = state.rec;
+    state.shouldKeepAlive = false;
     state.recording = false;
-    try { state.rec && state.rec.stop(); } catch {}
     state.rec = null;
+    // Abort is immediate and prevents delayed restarts from queued events.
+    try { rec && rec.abort(); } catch { try { rec && rec.stop(); } catch {} }
     if (state.tick) { clearInterval(state.tick); state.tick = null; }
     state.interimText = "";
     render();
