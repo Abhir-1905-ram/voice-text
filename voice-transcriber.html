@@ -358,7 +358,12 @@
       state.interimText = interim;
       render();
     };
-    rec.onerror = (ev) => { els.error.textContent = ev.error || "Recognition error"; els.error.hidden = false; };
+    rec.onerror = (ev) => {
+      // When user presses stop, SpeechRecognition may emit "aborted" - do not show it as an error.
+      if (!state.shouldKeepAlive && ev.error === "aborted") return;
+      els.error.textContent = ev.error || "Recognition error";
+      els.error.hidden = false;
+    };
     rec.onend = () => {
       // Auto-resume only while the user still wants recording active.
       if (state.rec === rec && state.shouldKeepAlive) { try { rec.start(); } catch {} }
