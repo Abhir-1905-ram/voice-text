@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Voice to Text — Live Speech Transcription</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --background: oklch(0.985 0.005 80);
+    --foreground: oklch(0.28 0.012 50);
+    --card: oklch(1 0 0);
+    --muted-foreground: oklch(0.55 0.018 60);
+    --primary: oklch(0.28 0.012 50);
+    --primary-foreground: oklch(0.985 0.005 80);
+    --border: oklch(0.88 0.02 70);
+    --destructive: oklch(0.7 0.18 25);
+    --record: oklch(0.7 0.17 25);
+    --peach: oklch(0.93 0.06 40);
+    --sun: oklch(0.92 0.07 55);
+    --glass: oklch(1 0 0 / 0.45);
+    --glass-border: oklch(1 0 0 / 0.7);
+    --font-serif: "Lora", Georgia, serif;
+    --font-sans: "Outfit", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-sans);
+    background: var(--background);
+    color: var(--foreground);
+    min-height: 100vh;
+    position: relative;
+    overflow-x: hidden;
+  }
+  .blob {
+    position: fixed;
+    border-radius: 9999px;
+    filter: blur(140px);
+    z-index: -1;
+    pointer-events: none;
+  }
+  .blob-1 { top: -10%; left: -10%; width: 60%; height: 70%; background: var(--peach); opacity: .8; }
+  .blob-2 { bottom: -20%; right: -10%; width: 70%; height: 80%; background: var(--sun); opacity: .7; filter: blur(160px); }
+
+  .wrap { max-width: 960px; margin: 0 auto; padding: 40px 24px; min-height: 100vh; display: flex; flex-direction: column; }
+  header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 32px; }
+  .lang-pill {
+    display: inline-flex; align-items: center; gap: 12px;
+    background: var(--glass); border: 1px solid var(--glass-border);
+    padding: 8px 16px; border-radius: 9999px;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  }
+  .lang-pill span { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .08em; color: var(--muted-foreground); }
+  .lang-pill select { background: transparent; border: 0; outline: none; font-family: inherit; font-size: 14px; font-weight: 500; color: var(--foreground); cursor: pointer; }
+  .stats { display: flex; align-items: center; gap: 20px; color: var(--muted-foreground); font-size: 14px; }
+  .stat { display: flex; flex-direction: column; align-items: flex-end; }
+  .stat-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; opacity: .7; }
+  .stat-val { font-weight: 500; color: var(--foreground); font-variant-numeric: tabular-nums; }
+  .divider { width: 1px; height: 24px; background: var(--border); }
+
+  main { position: relative; flex: 1; display: flex; flex-direction: column; margin-bottom: 56px; }
+  .listening {
+    position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(255,255,255,.8); backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border); border-radius: 9999px;
+    padding: 4px 12px; z-index: 10;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  }
+  .listening .dot { width: 8px; height: 8px; border-radius: 9999px; background: var(--record); animation: pulse 1.4s ease-in-out infinite; }
+  .listening span { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .12em; color: var(--muted-foreground); }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+
+  .canvas {
+    flex: 1; overflow-y: auto;
+    background: var(--glass); border: 1px solid var(--glass-border);
+    border-radius: 40px; padding: 48px;
+    backdrop-filter: blur(40px);
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,.15);
+  }
+  .canvas article {
+    max-width: 65ch; margin: 0 auto;
+    font-family: var(--font-serif);
+    font-size: 26px; line-height: 1.8; color: var(--foreground);
+    text-wrap: pretty;
+  }
+  .placeholder { font-style: italic; color: var(--muted-foreground); }
+  .interim { opacity: .6; }
+  .caret { display: inline-block; width: 3px; height: 26px; background: var(--record); margin-left: 4px; vertical-align: middle; border-radius: 2px; animation: pulse 1.2s ease-in-out infinite; }
+
+  .alert { margin-top: 16px; padding: 12px 16px; border-radius: 16px; background: rgba(255,255,255,.8); backdrop-filter: blur(16px); border: 1px solid var(--glass-border); font-size: 14px; }
+  .alert.error { color: var(--destructive); }
+  .alert.muted { color: var(--muted-foreground); }
+
+  footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 0 8px; }
+  .ghost { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 9999px; background: transparent; border: 0; font-family: inherit; font-size: 14px; font-weight: 500; color: var(--muted-foreground); cursor: pointer; transition: background .2s, color .2s; }
+  .ghost:hover { background: rgba(255,255,255,.5); color: var(--foreground); }
+  .primary { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; border-radius: 9999px; background: var(--primary); color: var(--primary-foreground); border: 0; font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.04); transition: opacity .2s; }
+  .primary:hover { opacity: .9; }
+  .right-controls { display: flex; align-items: center; gap: 8px; }
+
+  .mic-wrap { position: relative; display: flex; align-items: center; justify-content: center; }
+  .ring { position: absolute; border-radius: 9999px; pointer-events: none; }
+  .ring-1 { inset: -20px; border: 1px solid color-mix(in oklab, var(--record) 18%, transparent); animation: ping 1.6s cubic-bezier(0,0,.2,1) infinite; }
+  .ring-2 { inset: -40px; border: 1px solid color-mix(in oklab, var(--record) 10%, transparent); animation: ping 1.6s cubic-bezier(0,0,.2,1) infinite; animation-delay: 1s; }
+  @keyframes ping { 75%, 100% { transform: scale(1.4); opacity: 0; } }
+  .mic-btn {
+    position: relative; z-index: 1;
+    width: 96px; height: 96px; border-radius: 9999px;
+    background: rgba(255,255,255,.9); border: 1px solid var(--glass-border);
+    backdrop-filter: blur(32px);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 12px 40px -10px rgba(0,0,0,.2);
+    transition: transform .15s;
+  }
+  .mic-btn:hover { transform: scale(1.05); }
+  .mic-btn:active { transform: scale(.95); }
+  .mic-btn:disabled { opacity: .5; cursor: not-allowed; }
+  .mic-btn svg { width: 32px; height: 32px; color: var(--foreground); }
+  .mic-btn.recording { box-shadow: 0 12px 40px -10px color-mix(in oklab, var(--record) 50%, transparent); }
+  .mic-btn.recording svg { width: 28px; height: 28px; color: var(--record); fill: var(--record); }
+
+  @media (max-width: 640px) {
+    .canvas { padding: 28px; border-radius: 28px; }
+    .canvas article { font-size: 20px; }
+    .stats { gap: 14px; }
+    .mic-btn { width: 80px; height: 80px; }
+  }
+</style>
+</head>
+<body>
+  <div class="blob blob-1" aria-hidden="true"></div>
+  <div class="blob blob-2" aria-hidden="true"></div>
+
+  <div class="wrap">
+    <header>
+      <div class="lang-pill">
+        <span>Language</span>
+        <select id="lang">
+          <option value="en-US">English</option>
+          <option value="te-IN">Telugu</option>
+        </select>
+      </div>
+      <div class="stats">
+        <div class="stat"><span class="stat-lbl">Duration</span><span class="stat-val" id="duration">00:00</span></div>
+        <div class="divider"></div>
+        <div class="stat"><span class="stat-lbl">Words</span><span class="stat-val" id="words">0</span></div>
+        <div class="divider"></div>
+        <div class="stat"><span class="stat-lbl">Characters</span><span class="stat-val" id="chars">0</span></div>
+      </div>
+    </header>
+
+    <main>
+      <div class="listening" id="listening" hidden>
+        <span class="dot"></span><span>Listening</span>
+      </div>
+      <div class="canvas">
+        <article id="article">
+          <span class="placeholder" id="placeholder">Press the microphone and start speaking. Your words will appear here as you talk.</span>
+          <span id="final"></span>
+          <span class="interim" id="interim"></span>
+          <span class="caret" id="caret" hidden></span>
+        </article>
+      </div>
+      <div class="alert error" id="error" hidden></div>
+      <div class="alert muted" id="unsupported" hidden>Speech recognition isn't supported in this browser. Try Chrome or Edge.</div>
+    </main>
+
+    <footer>
+      <button class="ghost" id="clear">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        Clear
+      </button>
+
+      <div class="mic-wrap">
+        <span class="ring ring-1" id="ring1" hidden></span>
+        <span class="ring ring-2" id="ring2" hidden></span>
+        <button class="mic-btn" id="mic" aria-label="Start recording">
+          <svg id="micIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+        </button>
+      </div>
+
+      <div class="right-controls">
+        <button class="ghost" id="copy">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span id="copyLabel">Copy</span>
+        </button>
+        <button class="primary" id="download">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export
+        </button>
+      </div>
+    </footer>
+  </div>
+
+<script>
+(() => {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    lang: $("lang"), duration: $("duration"), words: $("words"), chars: $("chars"),
+    listening: $("listening"), placeholder: $("placeholder"), final: $("final"),
+    interim: $("interim"), caret: $("caret"), error: $("error"), unsupported: $("unsupported"),
+    clear: $("clear"), mic: $("mic"), micIcon: $("micIcon"), ring1: $("ring1"), ring2: $("ring2"),
+    copy: $("copy"), copyLabel: $("copyLabel"), download: $("download"),
+  };
+
+  const state = { rec: null, recording: false, finalText: "", interimText: "", duration: 0, startedAt: null, tick: null };
+
+  if (!SR) {
+    els.unsupported.hidden = false;
+    els.mic.disabled = true;
+  }
+
+  const fmt = (s) => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(Math.floor(s%60)).padStart(2,"0")}`;
+
+  const render = () => {
+    const full = state.finalText + (state.interimText ? " " + state.interimText : "");
+    const trimmed = full.trim();
+    els.placeholder.hidden = !!(state.finalText || state.interimText);
+    els.final.textContent = state.finalText;
+    els.interim.textContent = state.interimText ? " " + state.interimText : "";
+    els.caret.hidden = !state.recording;
+    els.words.textContent = trimmed ? trimmed.split(/\s+/).length : 0;
+    els.chars.textContent = full.length;
+    els.duration.textContent = fmt(state.duration);
+    els.listening.hidden = !state.recording;
+    els.ring1.hidden = !state.recording;
+    els.ring2.hidden = !state.recording;
+    els.mic.classList.toggle("recording", state.recording);
+    els.mic.setAttribute("aria-label", state.recording ? "Stop recording" : "Start recording");
+    // Keep the microphone glyph in both states; recording turns it red via CSS.
+    els.micIcon.innerHTML = '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/>';
+  };
+
+  const start = () => {
+    els.error.hidden = true;
+    if (!SR) return;
+    const rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = els.lang.value;
+    rec.onresult = (e) => {
+      let interim = "", final = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) final += r[0].transcript;
+        else interim += r[0].transcript;
+      }
+      if (final) state.finalText = (state.finalText ? state.finalText + " " : "") + final.trim();
+      state.interimText = interim;
+      render();
+    };
+    rec.onerror = (ev) => { els.error.textContent = ev.error || "Recognition error"; els.error.hidden = false; };
+    rec.onend = () => {
+      if (state.rec === rec && state.recording) { try { rec.start(); } catch {} }
+    };
+    state.rec = rec;
+    try { rec.start(); } catch (e) { els.error.textContent = String(e); els.error.hidden = false; return; }
+    state.startedAt = Date.now() - state.duration * 1000;
+    state.tick = setInterval(() => {
+      state.duration = (Date.now() - state.startedAt) / 1000;
+      els.duration.textContent = fmt(state.duration);
+    }, 250);
+    state.recording = true;
+    render();
+  };
+
+  const stop = () => {
+    state.recording = false;
+    try { state.rec && state.rec.stop(); } catch {}
+    state.rec = null;
+    if (state.tick) { clearInterval(state.tick); state.tick = null; }
+    state.interimText = "";
+    render();
+  };
+
+  els.mic.addEventListener("click", () => state.recording ? stop() : start());
+
+  els.clear.addEventListener("click", () => {
+    state.finalText = ""; state.interimText = ""; state.duration = 0;
+    state.startedAt = state.recording ? Date.now() : null;
+    render();
+  });
+
+  els.copy.addEventListener("click", async () => {
+    const full = (state.finalText + (state.interimText ? " " + state.interimText : "")).trim();
+    if (!full) return;
+    await navigator.clipboard.writeText(full);
+    els.copyLabel.textContent = "Copied";
+    setTimeout(() => (els.copyLabel.textContent = "Copy"), 1500);
+  });
+
+  els.download.addEventListener("click", () => {
+    const full = (state.finalText + (state.interimText ? " " + state.interimText : "")).trim();
+    if (!full) return;
+    const blob = new Blob([full], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `transcript-${new Date().toISOString().slice(0,19).replace(/[:T]/g,"-")}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
